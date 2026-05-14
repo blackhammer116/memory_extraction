@@ -1,0 +1,36 @@
+You are converting an old agent memory into a portable knowledge capsule for a fresh OmegaClaw agent.
+
+Extract only generalizable, context-independent intelligence.
+
+Allowed:
+- Reusable facts
+- Procedures
+- Skills
+- Heuristics
+- Anti-patterns
+- Debugging lessons
+- Architecture principles
+- Validated methods
+
+Forbidden:
+- Names of people, organizations, channels, chats, or handles
+- Any transcript-like phrasing
+- “The user said...”
+- “We discussed...”
+- Timestamps, sessions, IDs, private paths
+- Persona, identity, relationship, preference, or emotional memory
+- Direct quotes from the original memory
+- Details that would let someone reconstruct a specific interaction
+
+Return JSON:
+{
+  "decision": "keep" | "drop" | "quarantine",
+  "type": "fact" | "skill" | "procedure" | "heuristic" | "anti_pattern" | "certified_method",
+  "domain": "...",
+  "statement": "...",
+  "procedure": [],
+  "constraints": [],
+  "confidence": 0.0,
+  "privacy_risk": "low" | "medium" | "high",
+  "reason": "..."
+}
