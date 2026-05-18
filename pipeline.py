@@ -27,7 +27,7 @@ class DistilledKnowledge(BaseModel):
 def main():
     # File Paths
     IN_FILE = "quarantine_raw_export.jsonl"
-    OUT_FILE = "distilled_knowledge.jsonl"
+    OUT_FILE = "KB/distilled_knowledge.jsonl"
     PROMPT_PATH = Path("extraction_prompt.txt")
 
     # 1. Load System Prompt
