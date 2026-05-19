@@ -5,6 +5,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
+import tqdm
 
 # Load environment variables from .env file
 load_dotenv()
@@ -52,12 +53,15 @@ def main():
         print(f"Error: {IN_FILE} does not exist. Run extract_LTM.py first.")
         return
 
+    with open(IN_FILE, 'r', encoding='utf-8') as f:
+        total_lines = sum(1 for line in f if line.strip())
+
     print("Starting LTM Distillation Pipeline...\n")
     
     with open(IN_FILE, "r", encoding="utf-8") as f_in, \
          open(OUT_FILE, "w", encoding="utf-8") as f_out:
         
-        for line in f_in:
+        for line in tqdm(f_in, total=total_lines, desc="Processing Memories"):
             if not line.strip():
                 continue
                 
@@ -69,10 +73,10 @@ def main():
             classification = classify_text(doc_text)
             if classification == "DROP":
                 dropped_early += 1
-                print(f"[{doc_id}] Skipped by Regex filter.")
+                tqdm.write(f"[{doc_id}] Skipped by Regex filter.")
                 continue
                 
-            print(f"[{doc_id}] Classified as {classification}. Offloading to LLM...")
+            tqdm.write(f"[{doc_id}] Classified as {classification}. Offloading to LLM...")
             
             # Phase 2: LLM Knowledge Distillation
             try:
@@ -110,14 +114,14 @@ def main():
                     }
                     f_out.write(json.dumps(clean_record, ensure_ascii=False) + "\n")
                     kept_count += 1
-                    print(f"  -> Kept: {extracted.type} - {extracted.domain}")
+                    tqdm.write(f"  -> Kept: {extracted.type} - {extracted.domain}")
                 else:
                     reason = extracted.reason if extracted else "Failed parse"
                     level = extracted.privacy_risk if extracted else "unknown"
-                    print(f"  -> Dropped by LLM (Privacy Risk: {level}). Reason: {reason}")
+                    tqdm.write(f"  -> Dropped by LLM (Privacy Risk: {level}). Reason: {reason}")
                     
             except Exception as e:
-                print(f"  -> Error communicating with LLM for {doc_id}: {e}")
+                tqdm.write(f"  -> Error communicating with LLM for {doc_id}: {e}")
                 
             processed_count += 1
 
