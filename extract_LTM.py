@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import chromadb
 
-OLD_CHROMA_PATH = "./Max_Botnick_Memory_May15/chroma_db"
+OLD_CHROMA_PATH = "./chroma_db"
 COLLECTION_NAME = "memories"
 OUT = Path("max_quarantine_raw_export.jsonl")
 
