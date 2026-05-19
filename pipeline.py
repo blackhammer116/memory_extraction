@@ -15,6 +15,7 @@ from classify_LTM import classify_text
 
 # Define Pydantic schema based on extraction_prompt.txt
 class DistilledKnowledge(BaseModel):
+    reference_id: str
     decision: Literal["keep", "drop", "quarantine"]
     type: Literal["fact", "skill", "procedure", "heuristic", "anti_pattern", "certified_method"]
     domain: str
@@ -25,10 +26,14 @@ class DistilledKnowledge(BaseModel):
     privacy_risk: Literal["low", "medium", "high"]
     reason: str
 
+class BatchDistilledKnowledge(BaseModel):
+    items: List[DistilledKnowledge]
+
+
 def main():
     # File Paths
-    IN_FILE = "quarantine_raw_export.jsonl"
-    OUT_FILE = "KB/distilled_knowledge.jsonl"
+    IN_FILE = "max_quarantine_raw_export.jsonl"
+    OUT_FILE = "KB/max_distilled_knowledge.jsonl"
     PROMPT_PATH = Path("extraction_prompt.txt")
 
     # 1. Load System Prompt
@@ -58,10 +63,68 @@ def main():
 
     print("Starting LTM Distillation Pipeline...\n")
     
+    BATCH_SIZE = 10  # Process 10 memories per LLM call
+    batch_records = []
+    
     with open(IN_FILE, "r", encoding="utf-8") as f_in, \
          open(OUT_FILE, "w", encoding="utf-8") as f_out:
         
-        for line in tqdm(f_in, total=total_lines, desc="Processing Memories"):
+        progress_bar = tqdm.tqdm(f_in, total=total_lines, desc="Processing Memories")
+        
+        def process_batch(batch):
+            nonlocal processed_count, kept_count
+            if not batch:
+                return
+        
+            batch_text = "\n\n".join([f"<memory id=\"{rec['id']}\">\n{rec['document']}\n</memory>" for rec in batch])
+            
+            try:
+                response = client.beta.chat.completions.parse(
+                    model=MODEL_NAME,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Extract intelligence for each of the following memories. Make sure to map the reference_id to the memory id attribute:\n\n{batch_text}"}
+                    ],
+                    response_format=BatchDistilledKnowledge,
+                    temperature=0.1
+                )
+                
+                extracted_batch = response.choices[0].message.parsed.items
+                
+                # Process results
+                for extracted in extracted_batch:
+                    # Find original record text if needed (optional)
+                    # orig_record = next((r for r in batch if r['id'] == extracted.reference_id), None)
+                    
+                    if extracted.decision == "keep" and extracted.privacy_risk == "low":
+                        clean_metadata = {
+                            "original_source_id": extracted.reference_id,
+                        }
+                        
+                        clean_record = {
+                            "id": f"distilled_{extracted.reference_id}",
+                            "document": extracted.statement,
+                            "metadata": {
+                                **clean_metadata,
+                                "type": extracted.type,
+                                "domain": extracted.domain,
+                                "confidence": extracted.confidence,
+                                "procedure": extracted.procedure,
+                                "constraints": extracted.constraints
+                            }
+                        }
+                        f_out.write(json.dumps(clean_record, ensure_ascii=False) + "\n")
+                        kept_count += 1
+                        tqdm.tqdm.write(f"  -> Kept: [{extracted.reference_id}] {extracted.type} - {extracted.domain}")
+                    else:
+                        tqdm.tqdm.write(f"  -> Dropped by LLM [{extracted.reference_id}] (Risk: {extracted.privacy_risk}). Reason: {extracted.reason}")
+                        
+            except Exception as e:
+                tqdm.tqdm.write(f"  -> Error communicating with LLM for batch: {e}")
+                
+            processed_count += len(batch)
+
+        for line in progress_bar:
             if not line.strip():
                 continue
                 
@@ -73,57 +136,19 @@ def main():
             classification = classify_text(doc_text)
             if classification == "DROP":
                 dropped_early += 1
-                tqdm.write(f"[{doc_id}] Skipped by Regex filter.")
+                progress_bar.write(f"[{doc_id}] Skipped by Regex filter.")
                 continue
                 
-            tqdm.write(f"[{doc_id}] Classified as {classification}. Offloading to LLM...")
+            # Queue for batch processing
+            batch_records.append({"id": doc_id, "document": doc_text})
             
-            # Phase 2: LLM Knowledge Distillation
-            try:
-                # Using OpenAI structured output parsing
-                response = client.beta.chat.completions.parse(
-                    model=MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Extract intelligence from this memory:\n{doc_text}"}
-                    ],
-                    response_format=DistilledKnowledge,
-                    temperature=0.1
-                )
+            if len(batch_records) >= BATCH_SIZE:
+                process_batch(batch_records)
+                batch_records.clear()
                 
-                extracted = response.choices[0].message.parsed
-                
-                # Phase 3: Final programmatic Verification
-                if extracted and extracted.decision == "keep" and extracted.privacy_risk == "low":
-                    # Remove any potentially dangerous original metadata that isn't required
-                    clean_metadata = {
-                        "original_source_id": doc_id,
-                    }
-                    
-                    clean_record = {
-                        "id": f"distilled_{doc_id}",
-                        "document": extracted.statement, # Using the exact clean statement
-                        "metadata": {
-                            **clean_metadata,
-                            "type": extracted.type,
-                            "domain": extracted.domain,
-                            "confidence": extracted.confidence,
-                            "procedure": extracted.procedure,
-                            "constraints": extracted.constraints
-                        }
-                    }
-                    f_out.write(json.dumps(clean_record, ensure_ascii=False) + "\n")
-                    kept_count += 1
-                    tqdm.write(f"  -> Kept: {extracted.type} - {extracted.domain}")
-                else:
-                    reason = extracted.reason if extracted else "Failed parse"
-                    level = extracted.privacy_risk if extracted else "unknown"
-                    tqdm.write(f"  -> Dropped by LLM (Privacy Risk: {level}). Reason: {reason}")
-                    
-            except Exception as e:
-                tqdm.write(f"  -> Error communicating with LLM for {doc_id}: {e}")
-                
-            processed_count += 1
+        # Process any remaining records
+        if batch_records:
+            process_batch(batch_records)
 
     print("\n--- Pipeline Complete ---")
     print(f"  Evaluated via LLM  : {processed_count}")
