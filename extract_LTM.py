@@ -4,7 +4,7 @@ import chromadb
 
 OLD_CHROMA_PATH = "./chroma_db"
 COLLECTION_NAME = "memories"
-OUT = Path("max_quarantine_raw_export.jsonl")
+OUT = Path("quarantine_raw_export.jsonl")
 
 client = chromadb.PersistentClient(path=OLD_CHROMA_PATH)
 collection = client.get_collection(COLLECTION_NAME)
