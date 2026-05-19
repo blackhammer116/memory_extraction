@@ -11,7 +11,10 @@ load_dotenv()
 # --- Configuration ---
 EMBEDDING_MODEL = "text-embedding-3-large"
 COLLECTION_NAME = "memories"
-KNOWLEDGE_FILE = "distilled_knowledge.jsonl"
+KNOWLEDGE_FILES = [
+    "KB/oma_distilled_knowledge.jsonl",
+    "KB/max_distilled_knowledge.jsonl"
+]
 CURRICULUM_FILE = "curriculum.metta"
 
 # Look for the DB path
@@ -30,7 +33,8 @@ def _embed_batch(texts):
     return [item.embedding for item in resp.data]
 
 def main():
-    if not Path(KNOWLEDGE_FILE).exists() and not Path(CURRICULUM_FILE).exists():
+    has_any_knowledge = any(Path(f).exists() for f in KNOWLEDGE_FILES)
+    if not has_any_knowledge and not Path(CURRICULUM_FILE).exists():
         print("Error: Neither knowledge nor curriculum files were found.")
         return
 
@@ -47,37 +51,37 @@ def main():
     documents = []
     metadatas = []
 
-    if Path(KNOWLEDGE_FILE).exists():
-        print("Loading distilled knowledge...")
-        with open(KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                
-                record = json.loads(line)
-                
-                ids.append(record["id"])
-                documents.append(record["document"])
-                
-                # Map our metadata into something the agent's RAG can query properly
-                meta = record.get("metadata", {})
-                clean_meta = {
-                    "source": "distilled_memory",
-                    "breadcrumb": f"LTM > {meta.get('domain', 'general')} > {meta.get('type', 'fact')}",
-                    "type": "chunk",
-                    "time": "knowledge_prior"
-                }
-                
-                for k, v in meta.items():
-                    if isinstance(v, list):
-                        clean_meta[k] = " | ".join(v) if v else "None"
-                    else:
-                        clean_meta[k] = v
-                
-                metadatas.append(clean_meta)
-
-    else:
-        print(f"Warning: {KNOWLEDGE_FILE} not found. Skipping...")
+    for k_file in KNOWLEDGE_FILES:
+        if Path(k_file).exists():
+            print(f"Loading distilled knowledge from {k_file}...")
+            with open(k_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    
+                    record = json.loads(line)
+                    
+                    ids.append(record["id"])
+                    documents.append(record["document"])
+                    
+                    # Map our metadata into something the agent's RAG can query properly
+                    meta = record.get("metadata", {})
+                    clean_meta = {
+                        "source": "distilled_memory",
+                        "breadcrumb": f"LTM > {meta.get('domain', 'general')} > {meta.get('type', 'fact')}",
+                        "type": "chunk",
+                        "time": "knowledge_prior"
+                    }
+                    
+                    for k, v in meta.items():
+                        if isinstance(v, list):
+                            clean_meta[k] = " | ".join(v) if v else "None"
+                        else:
+                            clean_meta[k] = v
+                    
+                    metadatas.append(clean_meta)
+        else:
+            print(f"Warning: {k_file} not found. Skipping...")
 
     if Path(CURRICULUM_FILE).exists():
         print("Loading curriculum...")
