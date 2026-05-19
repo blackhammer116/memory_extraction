@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import time
 from typing import List, Literal, Optional
 from pydantic import BaseModel
 from openai import OpenAI
@@ -48,7 +49,7 @@ def main():
     # The client can be redirected to local models by passing `base_url="http://localhost:11434/v1"` (e.g. for Ollama)
     client = OpenAI()
     # Replace with the actual model you intend to use
-    MODEL_NAME = "gpt-4o" 
+    MODEL_NAME = "gpt-4o-mini" 
 
     processed_count = 0
     dropped_early = 0
@@ -63,7 +64,7 @@ def main():
 
     print("Starting LTM Distillation Pipeline...\n")
     
-    BATCH_SIZE = 10  # Process 10 memories per LLM call
+    BATCH_SIZE = 50  # Process 10 memories per LLM call
     batch_records = []
     
     with open(IN_FILE, "r", encoding="utf-8") as f_in, \
@@ -91,11 +92,8 @@ def main():
                 
                 extracted_batch = response.choices[0].message.parsed.items
                 
-                # Process results
                 for extracted in extracted_batch:
-                    # Find original record text if needed (optional)
-                    # orig_record = next((r for r in batch if r['id'] == extracted.reference_id), None)
-                    
+
                     if extracted.decision == "keep" and extracted.privacy_risk == "low":
                         clean_metadata = {
                             "original_source_id": extracted.reference_id,
@@ -145,6 +143,7 @@ def main():
             if len(batch_records) >= BATCH_SIZE:
                 process_batch(batch_records)
                 batch_records.clear()
+                time.sleep(1.5)
                 
         # Process any remaining records
         if batch_records:
