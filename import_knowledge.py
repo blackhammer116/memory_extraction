@@ -15,7 +15,7 @@ KNOWLEDGE_FILES = [
     "KB/oma_distilled_knowledge.jsonl",
     "KB/max_distilled_knowledge.jsonl"
 ]
-CURRICULUM_FILE = "curriculum.metta"
+CURRICULUM_FILE = "KB/curriculum.metta"
 
 # Look for the DB path
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
