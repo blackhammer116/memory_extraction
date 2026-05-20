@@ -50,6 +50,7 @@ def main():
     ids = []
     documents = []
     metadatas = []
+    seen_ids = set()
 
     for k_file in KNOWLEDGE_FILES:
         if Path(k_file).exists():
@@ -60,11 +61,16 @@ def main():
                         continue
                     
                     record = json.loads(line)
+                    record_id = record["id"]
                     
-                    ids.append(record["id"])
+                    if record_id in seen_ids:
+                        continue
+                        
+                    seen_ids.add(record_id)
+                    ids.append(record_id)
                     documents.append(record["document"])
+
                     
-                    # Map our metadata into something the agent's RAG can query properly
                     meta = record.get("metadata", {})
                     clean_meta = {
                         "source": "distilled_memory",
@@ -90,7 +96,13 @@ def main():
             chunks = [chunk.strip() for chunk in content.split("\n\n") if chunk.strip()]
             
             for idx, chunk in enumerate(chunks):
-                ids.append(f"curriculum_mem_{idx}")
+                curriculum_id = f"curriculum_mem_{idx}"
+                
+                if curriculum_id in seen_ids:
+                    continue
+                    
+                seen_ids.add(curriculum_id)
+                ids.append(curriculum_id)
                 documents.append(chunk)
                 metadatas.append({
                     "source": "curriculum",
